@@ -1,0 +1,236 @@
+<?php
+
+namespace Stivala\Sitemap\controllers;
+
+use Craft;
+use DOMDocument;
+use craft\db\Query;
+use yii\web\Response;
+use craft\web\Controller;
+use Stivala\Sitemap\Sitemap;
+use craft\helpers\UrlHelper;
+use Stivala\Sitemap\records\SitemapEntry;
+use Stivala\Sitemap\models\SitemapEntryModel;
+use Stivala\Sitemap\records\SitemapCrawlerVisit;
+
+class SitemapController extends Controller
+{
+    protected $allowAnonymous = ['index'];
+
+    /**
+     * @inheritdoc
+     */
+    private function getUrl($uri, $siteId)
+    {
+        if ($uri !== null) {
+            $path = ($uri === '__home__') ? '' : $uri;
+            return UrlHelper::siteUrl($path, null, null, $siteId);
+        }
+
+        return null;
+    }
+
+    /**
+     * Handle a request going to our plugin's index action URL,
+     * e.g.: actions/sitemap/default
+     *
+     * @return mixed
+     */
+    public function actionIndex()
+    {
+        Craft::$app->response->format = Response::FORMAT_RAW;
+        $headers = Craft::$app->response->headers;
+        $headers->add('Content-Type', 'text/xml');
+
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $dom->formatOutput = true;
+
+        $urlset = $dom->createElementNS('http://www.sitemaps.org/schemas/sitemap/0.9', 'urlset');
+        $urlset->setAttributeNS(
+            'http://www.w3.org/2000/xmlns/',
+            'xmlns:xhtml',
+            'http://www.w3.org/1999/xhtml'
+        );
+        $dom->appendChild($urlset);
+
+        foreach ($this->_createEntrySectionQuery()->all() as $item) {
+            $loc = $this->getUrl($item['uri'], $item['siteId']);
+            if ($loc === null) {
+                continue;
+            }
+            
+            $url = $dom->createElement('url');
+            $urlset->appendChild($url);
+            $url->appendChild($dom->createElement('loc', $loc));
+            $url->appendChild($dom->createElement('priority', $item['priority']));
+            $url->appendChild($dom->createElement('changefreq', $item['changefreq']));
+            $dateUpdated = strtotime($item['dateUpdated']);
+            $url->appendChild($dom->createElement('lastmod', date('Y-m-d\TH:i:sP', $dateUpdated)));
+            if ($item['alternateLinkCount'] > 1) {
+                $alternateLinks = $this->_createAlternateLinkQuery($item['elementId'])->all();
+                if (count($alternateLinks) > 0) {
+                    foreach ($alternateLinks as $alternateItem) {
+                        $alternateLoc = $this->getUrl($alternateItem['uri'], $alternateItem['siteId']);
+                        if ($alternateLoc === null) {
+                            continue;
+                        }
+
+                        $alternateLink = $dom->createElementNS('http://www.w3.org/1999/xhtml', 'xhtml:link');
+                        $alternateLink->setAttribute('rel', 'alternate');
+                        $alternateLink->setAttribute('hreflang', strtolower($alternateItem['siteLanguage']));
+                        $alternateLink->setAttribute('href', $alternateLoc);
+                        $url->appendChild($alternateLink);
+                    }
+                }
+            }
+        }
+
+        foreach ($this->_createEntryCategoryQuery()->all() as $item) {
+            $loc = $this->getUrl($item['uri'], $item['siteId']);
+            if ($loc === null) {
+                continue;
+            }
+
+            $url = $dom->createElement('url');
+            $urlset->appendChild($url);
+            $url->appendChild($dom->createElement('loc', $loc));
+            $url->appendChild($dom->createElement('priority', $item['priority']));
+            $url->appendChild($dom->createElement('changefreq', $item['changefreq']));
+            $dateUpdated = strtotime($item['dateUpdated']);
+            $url->appendChild($dom->createElement('lastmod', date('Y-m-d\TH:i:sP', $dateUpdated)));
+        }
+
+        foreach ($this->_createProductTypeQuery()->all() as $item) {
+            $loc = $this->getUrl($item['uri'], $item['siteId']);
+            if ($loc === null) {
+                continue;
+            }
+            
+            $url = $dom->createElement('url');
+            $urlset->appendChild($url);
+            $url->appendChild($dom->createElement('loc', $loc));
+            $url->appendChild($dom->createElement('priority', $item['priority']));
+            $url->appendChild($dom->createElement('changefreq', $item['changefreq']));
+            $dateUpdated = strtotime($item['dateUpdated']);
+            $url->appendChild($dom->createElement('lastmod', date('Y-m-d\TH:i:sP', $dateUpdated)));
+            if ($item['alternateLinkCount'] > 1) {
+                $alternateLinks = $this->_createAlternateLinkQuery($item['elementId'])->all();
+                if (count($alternateLinks) > 0) {
+                    foreach ($alternateLinks as $alternateItem) {
+                        $alternateLoc = $this->getUrl($alternateItem['uri'], $alternateItem['siteId']);
+                        if ($alternateLoc === null) {
+                            continue;
+                        }
+
+                        $alternateLink = $dom->createElementNS('http://www.w3.org/1999/xhtml', 'xhtml:link');
+                        $alternateLink->setAttribute('rel', 'alternate');
+                        $alternateLink->setAttribute('hreflang', strtolower($alternateItem['siteLanguage']));
+                        $alternateLink->setAttribute('href', $alternateLoc);
+                        $url->appendChild($alternateLink);
+                    }
+                }
+            }
+        }
+
+        return $dom->saveXML();
+    }
+
+    private function _createEntrySectionQuery(): Query
+    {
+
+        $subQuery = (new Query())
+            ->select('COUNT(DISTINCT other_elements_sites.id)')
+            ->from('{{%elements_sites}} other_elements_sites')
+            ->where('[[other_elements_sites.elementId]] = [[elements_sites.elementId]] AND [[other_elements_sites.enabled]] = 1');
+        return (new Query())
+            ->select([
+                'elements_sites.uri uri',
+                'elements_sites.dateUpdated dateUpdated',
+                'elements_sites.siteId',
+                'sitemap_entries.changefreq changefreq',
+                'sitemap_entries.priority priority',
+                'sites.language siteLanguage',
+                'elements.id elementId',
+                'alternateLinkCount' => $subQuery,
+
+                
+            ])
+            ->from(['{{%sections}} sections'])
+            ->innerJoin('{{%stivala_sitemap_entries}} sitemap_entries', '[[sections.id]] = [[sitemap_entries.linkId]] AND [[sitemap_entries.type]] = "section"')
+            ->leftJoin('{{%structures}} structures', '[[structures.id]] = [[sections.structureId]]')
+            ->innerJoin('{{%sections_sites}} sections_sites', '[[sections_sites.sectionId]] = [[sections.id]] AND [[sections_sites.hasUrls]] = 1')
+            ->innerJoin('{{%entries}} entries', '[[sections.id]] = [[entries.sectionId]]')
+            ->innerJoin('{{%elements}} elements', '[[entries.id]] = [[elements.id]] AND [[elements.enabled]] = 1')
+            ->innerJoin('{{%elements_sites}} elements_sites', '[[elements_sites.elementId]] = [[elements.id]] AND [[elements_sites.enabled]] = 1')
+            ->innerJoin('{{%sites}} sites', '[[elements_sites.siteId]] = [[sites.id]]')
+
+            ->groupBy(['elements_sites.id']);
+    }
+
+    private function _createAlternateLinkQuery($elementId): Query
+    {
+        return (new Query())
+            ->select([
+                'elements_sites.uri uri',
+                'elements_sites.dateUpdated dateUpdated',
+                'elements_sites.siteId',
+                'sites.language siteLanguage',
+            ])
+            ->from('{{%elements}} elements')
+            ->innerJoin('{{%elements_sites}} elements_sites', '[[elements_sites.elementId]] = [[elements.id]] AND [[elements_sites.enabled]] = 1')
+            ->innerJoin('{{%sites}} sites', '[[elements_sites.siteId]] = [[sites.id]]')
+            ->where(['=', '[[elements_sites.elementId]]', $elementId])
+            ->groupBy(['elements_sites.id']);
+    }
+
+    private function _createEntryCategoryQuery(): Query
+    {
+        return (new Query())
+            ->select([
+
+                'elements_sites.uri uri',
+                'elements_sites.dateUpdated dateUpdated',
+                'elements_sites.siteId',
+                'sitemap_entries.changefreq changefreq',
+                'sitemap_entries.priority priority',
+            ])
+            ->from(['{{%categories}} categories'])
+            ->innerJoin('{{%stivala_sitemap_entries}} sitemap_entries', '[[categories.groupId]] = [[sitemap_entries.linkId]] AND [[sitemap_entries.type]] = "category"')
+            ->innerJoin('{{%categorygroups_sites}} categorygroups_sites', '[[categorygroups_sites.groupId]] = [[categories.groupId]] AND [[categorygroups_sites.hasUrls]] = 1')
+            ->innerJoin('{{%elements}} elements', '[[elements.id]] = [[categories.id]] AND [[elements.enabled]] = 1')
+            ->innerJoin('{{%elements_sites}} elements_sites', '[[elements_sites.elementId]] = [[elements.id]] AND [[elements_sites.enabled]] = 1')
+            ->innerJoin('{{%sites}} sites', '[[elements_sites.siteId]] = [[sites.id]]')
+            ->groupBy(['elements_sites.id']);
+    }
+
+    private function _createProductTypeQuery(): Query
+    {
+
+        $subQuery = (new Query())
+            ->select('COUNT(DISTINCT other_elements_sites.id)')
+            ->from('{{%elements_sites}} other_elements_sites')
+            ->where('[[other_elements_sites.elementId]] = [[elements_sites.elementId]] AND [[other_elements_sites.enabled]] = 1');
+        return (new Query())
+            ->select([
+                'elements_sites.uri uri',
+                'elements_sites.dateUpdated dateUpdated',
+                'elements_sites.siteId',
+                'sitemap_entries.changefreq changefreq',
+                'sitemap_entries.priority priority',
+                'sites.language siteLanguage',
+                'elements.id elementId',
+                'alternateLinkCount' => $subQuery,
+
+                
+            ])
+            ->from(['{{%commerce_producttypes}} commerce_producttypes'])
+            ->innerJoin('{{%stivala_sitemap_entries}} sitemap_entries', '[[commerce_producttypes.id]] = [[sitemap_entries.linkId]] AND [[sitemap_entries.type]] = "producttype"')
+            ->innerJoin('{{%commerce_producttypes_sites}} commerce_producttypes_sites', '[[commerce_producttypes_sites.productTypeId]] = [[commerce_producttypes.id]] AND [[commerce_producttypes_sites.hasUrls]] = 1')
+            ->innerJoin('{{%commerce_products}} commerce_products', '[[commerce_producttypes.id]] = [[commerce_products.typeId]]')
+            ->innerJoin('{{%elements}} elements', '[[commerce_products.id]] = [[elements.id]] AND [[elements.enabled]] = 1')
+            ->innerJoin('{{%elements_sites}} elements_sites', '[[elements_sites.elementId]] = [[elements.id]] AND [[elements_sites.enabled]] = 1')
+            ->innerJoin('{{%sites}} sites', '[[elements_sites.siteId]] = [[sites.id]]')
+
+            ->groupBy(['elements_sites.id']);
+    }
+}

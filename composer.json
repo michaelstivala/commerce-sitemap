@@ -1,0 +1,56 @@
+{
+    "name": "michaelstivala/commerce-sitemap",
+    "description": "Craft 3 plugin that provides an easy way to provide and manage a sitemap supporting Craft Commerce products.",
+    "type": "craft-plugin",
+    "version": "1.0.0",
+    "keywords": [
+        "craft",
+        "cms",
+        "craftcms",
+        "craft-plugin",
+        "craft commerce",
+        "sitemap",
+        "seo",
+        "sitemap.xml",
+        "webmaster tools"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Michael Stivala",
+            "email": "michaelstivala@me.com",
+            "homepage": "https://michaelstivala.com/"
+        },
+        {
+            "name": "Johan Zandstra",
+            "email": "info@dolphiq.nl",
+            "homepage": "https://dolphiq.nl/"
+        }
+    ],
+    "require": {
+        "craftcms/cms": "^3.0.18"
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+          "Stivala\\Sitemap\\": "src/"
+        }
+    },
+    "extra": {
+        "name": "Craft Commerce Sitemap",
+        "handle": "commerce-sitemap",
+        "schemaVersion": "1.0.0",
+        "developer": "Michael Stivala",
+        "developerUrl": "https://michaelstivala.com/",
+        "hasCpSettings": true,
+        "hasCpSection": false,
+        "documentationUrl": "https://github.com/michaelstivala/commerce-sitemap/blob/master/README.md",
+        "changelogUrl": "https://github.com/michaelstivala/commerce-sitemap/blob/master/CHANGELOG.md",
+        "class": "Stivala\\Sitemap\\Sitemap"
+    }
+}
